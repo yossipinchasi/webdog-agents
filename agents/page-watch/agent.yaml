@@ -1,0 +1,126 @@
+# page-watch — webdog's page-content monitor, ported.
+#
+# webdog (github.com/yossipinchasi/webdog) watches any URL a user pastes: it
+# scrapes the page to markdown through Context.dev, diffs it line by line, and
+# writes an AI summary of the change. Three of those do not carry over here,
+# and the manifest says so rather than pretending:
+#
+#   - ANY URL. Sources are declared in this manifest, one per page, and a
+#     subscriber picks from them; fetch() never sees a subscriber's settings.
+#     Adding a page is an edit here and a review, not a form field.
+#   - CONTEXT.DEV. A paid scraping API on our own key, and a headless browser
+#     that gets past bot challenges. Neither is allowed: no builder keys, and no
+#     source that challenges bots. Pages are fetched as plain HTML.
+#   - AI SUMMARY OF THE CHANGE. enrich() only ever sees NEW items, and a page
+#     that changed is not new; match() sees before and after but has no model.
+#     So what changed is reported as the lines added and removed, verbatim.
+#
+# Most of columbia.edu (the main site, events, housing, engineering, GSAS,
+# SSOL) answers bots with a Cloudflare challenge, so those pages cannot be
+# watched at all. The pages below answered a plain request with 200 and allow
+# it in robots.txt.
+
+id: page-watch
+name: "Page Watch"
+tagline: "Know when a Columbia page changes, and what changed."
+card_subtitle: "Watches a fixed list of public Columbia pages for changes"
+
+description: "Checks a short list of public Columbia web pages every 30 minutes and tells you when one changes, with the lines that were added and removed. It only watches the pages listed — you cannot add your own — and it cannot read pages that block automated visitors, which is most of columbia.edu."
+
+not_covered:
+  - "Any page that is not on the list — you choose from the list, you cannot paste a link"
+  - "Most of columbia.edu: the main site, events, housing, engineering, GSAS and SSOL block automated visitors, so they cannot be watched"
+  - "A plain-language summary of the change — you get the lines that changed, verbatim"
+  - "Changes that only appear after a page runs JavaScript, or behind a login"
+  - "Anything faster than 30 minutes after the change"
+
+before_you_join:
+  - "If the page you care about is not in the list, this agent cannot watch it."
+
+about:
+  what_it_does: "Tells you when one of the listed pages changes, and shows the lines that were added and removed."
+  who_its_for: "Students who keep reloading a department or library page for news. Not for anyone who needs to watch a page of their own choosing."
+  what_it_reads:
+    - "The public HTML of each listed page, the same text a browser shows"
+  when_you_hear_from_it: "On an event: within 30 minutes of a listed page changing."
+  what_arrives: "Which page changed, the first few lines added and removed, and a link to the page. Reading the rest is up to you."
+  how_current: "Up to 30 minutes behind the page."
+  what_it_needs:
+    - "Which pages you want watched, from the list"
+    - "Never a password or a login. This platform never holds one."
+
+category: campus-life
+pattern: page-diff-watcher
+region: "us-ny-columbia"
+
+# time: it runs without being asked. state: it needs last time's text to know
+# what changed. (It also hands you something to act on — "output" — which the
+# guide lists as an axis, but the gate refuses that word, so it is not claimed.)
+claude_cant_axes: [time, state]
+
+display: board
+
+sources:
+  - id: cs-home
+    type: http_html
+    url: "https://www.cs.columbia.edu/"
+    auth: none
+    rate_limit: 4/hour
+    tier: cooperative
+  - id: library-news
+    type: http_html
+    url: "https://library.columbia.edu/about/news.html"
+    auth: none
+    rate_limit: 4/hour
+    tier: cooperative
+
+params:
+  pages:
+    - id: cs-home
+      label: "Computer Science — department home and news"
+      url: "https://www.cs.columbia.edu/"
+    - id: library-news
+      label: "Columbia Libraries — news"
+      url: "https://library.columbia.edu/about/news.html"
+
+poll:
+  frequency: 30m
+
+user_config:
+  - key: pages
+    label: "Which pages?"
+    type: multiselect
+    options_from: params.pages
+    required: true
+
+trigger:
+  condition: "prev.item(id).hash != curr.item(id).hash"
+  dedupe_key: "{id}:{hash}"
+  cooldown: 3600s
+
+guard:
+  allow_empty_state: false
+  max_drop_ratio: 0.5
+  min_items_for_drop_check: 2
+
+limits:
+  max_alerts_per_run: 10
+  max_alerts_per_user_per_run: 5
+  timeout_ms: 30000
+
+alert:
+  priority: normal
+  title: "{label} changed"
+  body: "{summary} The page is linked; this agent only reports changes."
+  action_url: "{url}"
+
+acceptance_criteria:
+  - "Alerts within one poll cycle of a listed page changing"
+  - "Never alerts on the first run — that establishes the baseline"
+  - "A page that fails to load or comes back empty fails the run rather than reading as everything changing"
+  - "Never alerts on a page the subscriber did not choose"
+  - "Never acts on anyone's behalf — alert only"
+  - "Never sends a credential, and declares no source that could accept one"
+
+sla:
+  max_detection_latency: 60m
