@@ -1,0 +1,106 @@
+# example-releases — the kit's worked example. Not in any catalogue.
+#
+# Why {owner}/{name} and not one {repo}: placeholders are percent-encoded, so
+# a param can never rewrite the path — and "nodejs/node" in one placeholder
+# arrives as nodejs%2Fnode and 404s.
+#
+# Why this source: GitHub's releases API is public, answers JSON, needs no
+# key, and publishes a rate limit (60 requests an hour without a token). It is
+# the smallest honest example of the whole shape — one declared source,
+# called once per repository per poll, never once per subscriber.
+#
+# Why it scores two axes and not more: it runs without being asked (time) and
+# remembers which releases it has already told you about (state). It does not
+# reach anything a chat window could not, and nobody's day is ruined by
+# hearing about a release an hour late, so access and speed are not claimed.
+
+id: example-releases
+name: "Release Watch (example)"
+tagline: "A new release of the tools you use, the hour it is published."
+card_subtitle: "Watches GitHub releases for a few open-source projects"
+
+description: "Checks a short, fixed list of open-source projects every 30 minutes and tells you when one publishes a new release. It only knows the projects listed here — you cannot add your own."
+
+not_covered:
+  - "Projects outside the list in this manifest — the list is fixed"
+  - "Pre-releases and drafts; only published, non-pre-release versions"
+  - "Anything faster than 30 minutes after publication"
+
+before_you_join:
+  - "It cannot watch a repository you choose. If yours is not on the list, this is not for you."
+
+about:
+  what_it_does: "Tells you when a project you picked publishes a new release on GitHub."
+  who_its_for: "People who depend on a handful of open-source tools and want to know when they change. Not for anyone who needs to watch their own repositories."
+  what_it_reads:
+    - "The public GitHub releases page of each project on the list"
+  when_you_hear_from_it: "On an event: within 30 minutes of a new release appearing."
+  what_arrives: "The project, the version, and a link to the release notes. Upgrading is up to you."
+  how_current: "Up to 30 minutes behind GitHub."
+  what_it_needs:
+    - "Which projects you care about, from the list"
+    - "Never a password or a login. This platform never holds one."
+
+category: developer-tools
+pattern: new-listing-watcher
+region: "global"
+
+claude_cant_axes: [time, state]
+
+display: board
+
+sources:
+  - id: releases
+    type: api
+    url: "https://api.github.com/repos/{owner}/{name}/releases?per_page=10"
+    auth: none
+    rate_limit: 30/hour
+    tier: cooperative
+
+params:
+  repos:
+    - nodejs/node
+    - vercel/next.js
+    - microsoft/TypeScript
+
+poll:
+  frequency: 30m
+
+user_config:
+  - key: repos
+    label: "Which projects?"
+    type: multiselect
+    options_from: params.repos
+    required: true
+
+trigger:
+  condition: "curr.item(id) exists AND prev.item(id) not exists"
+  dedupe_key: "{id}"
+  cooldown: 86400s
+
+guard:
+  allow_empty_state: false
+  max_drop_ratio: 0.5
+  min_items_for_drop_check: 6
+
+limits:
+  max_alerts_per_run: 10
+  max_alerts_per_user_per_run: 5
+  timeout_ms: 20000
+
+alert:
+  priority: normal
+  title: "{repo} {version}"
+  body: "{repo} published {version}. The release notes are linked; upgrading is up to you."
+  action_url: "{url}"
+
+acceptance_criteria:
+  - "Alerts within one poll cycle of a release being published"
+  - "Never alerts on the first run — that establishes the baseline"
+  - "Never alerts on a pre-release or a draft"
+  - "A source returning zero releases fails the run rather than reading as everything changing"
+  - "Never acts on anyone's behalf — alert only"
+  - "Never sends a credential, and declares no source that could accept one"
+
+sla:
+  max_detection_latency: 60m

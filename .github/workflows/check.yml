@@ -1,0 +1,27 @@
+# Runs the platform's gate on every push to YOUR repository, so the commit you
+# submit has already passed it. It is the same code the platform runs when it
+# imports your agent — npm run agent:check, writing nothing, needing no keys.
+name: Agent check
+
+on: [push, pull_request]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-audit --no-fund
+      - run: npx tsc --noEmit
+      - name: Every agent in agents/
+        run: |
+          failed=0
+          for dir in agents/*/; do
+            id=$(basename "$dir")
+            echo "::group::$id"
+            npm run --silent agent:check -- "$id" || failed=1
+            echo "::endgroup::"
+          done
+          exit $failed

@@ -1,0 +1,4 @@
+[
+  { "repos": ["nodejs/node"] },
+  { "repos": ["vercel/next.js", "microsoft/TypeScript"] }
+]
